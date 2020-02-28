@@ -579,9 +579,17 @@ estim_vol_akb1:
 
 	ldi		ZL,				low(C_akb)
 	ldi		ZH,				high(C_akb)
+
 	lds		temp1,			flags
 	sbrs	temp1,			start_stop_CAKB
 	rjmp	Estim_vol_akb3
+
+	lds		temp1,			C_akb_count
+	inc		temp1
+	sts		C_akb_count,	temp1
+	cpi		temp1,			100									; суммируем по 100 значений за каждые 10 мс
+	brlo	estim_vol_akb2
+	sts		C_akb_count,	zero
 	
 	ld		temp4,			Z+
 	ld		temp5,			Z+
@@ -597,12 +605,7 @@ estim_vol_akb1:
 	st		-Z,				temp5
 	st		-Z,				temp4
 
-	lds		temp1,			C_akb_count
-	inc		temp1
-	sts		C_akb_count,	temp1
-	cpi		temp1,			100									; суммируем по 100 значений за каждые 10 мс
-	brlo	estim_vol_akb2
-	sts		C_akb_count,	zero								; делим на 3600 получаем ма/ч
+																; делим на 3600 получаем ма/ч
 																; индикация емкости
 	ldi		temp1,			4									; сначала делим на 16
 estim_vol_div32:
@@ -613,7 +616,11 @@ estim_vol_div32:
 	dec		temp1
 	brne	estim_vol_div32
 	
+	ldi		temp1,		(3600/16)
+	rcall	div32u
 
+	sts		CC_akb_l,	temp4
+	sts		CC_akb_h,	temp5
 
 	rjmp	estim_vol_akb2
 estim_vol_akb3:
@@ -774,6 +781,16 @@ SRAM_clr1:
 	rcall	PORT_init
 	rcall	ADC_init
 	rcall	TIM0_init
+	
+;	ldi		temp1,		byte1 (250000001)
+;	ldi		temp2,		byte2 (250000001)
+;	ldi		temp3,		byte3 (250000001)
+;	ldi		temp4,		byte4 (250000001)
+
+;	ldi		temp5,		220
+;	ldi		temp4,		high(500)
+;	rcall	div32u
+
 	sei
 	rcall	LCD_init
 	rcall	LCD_clr
@@ -817,7 +834,7 @@ main_loop:
 	brne	main_ind_loop_out
 	sts		lcd_loop,		zero
 
-	ldi		temp1,			0x05					; установка курсора 
+	ldi		temp1,			0x04					; установка курсора 
 	sts		cursor_pos,		temp1
 	rcall	LCD_set_cursor
 
@@ -828,14 +845,26 @@ main_loop:
 	rcall	bin16ASCII5
 	rcall	indications
 
-	ldi		temp1,			0x15					; установка курсора 
+	ldi		temp1,			0x14					; установка курсора 
 	sts		cursor_pos,		temp1
 	rcall	LCD_set_cursor
 
 ;	lds		temp1,			II_akb_l
 ;	lds		temp2, 			II_akb_h
-	lds		temp1,			C_akb + 4
-	lds		temp2,			C_akb + 3
+	lds		temp1,			CC_akb_l
+	lds		temp2,			CC_akb_h
+
+	mov		tmpASCII_l, 	temp1
+	mov		tmpASCII_h, 	temp2
+	rcall	bin16ASCII5
+	rcall	indications
+
+	ldi		temp1,			0x1B					; установка курсора 
+	sts		cursor_pos,		temp1
+	rcall	LCD_set_cursor
+
+	lds		temp1,			II_akb_l
+	lds		temp2, 			II_akb_h
 
 	mov		tmpASCII_l, 	temp1
 	mov		tmpASCII_h, 	temp2
