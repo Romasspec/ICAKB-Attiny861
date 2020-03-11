@@ -46,5 +46,5 @@
 .equ length_buf				= 5
 .equ Ind_loop				= 500			; цикл индикации 500 мс
 .equ vtimer1				= 10			; цикл 10 мс
-.equ adc_counter			= 4
+.equ adc_counter			= 64
 .equ key_timeout_val		= 1500			; длительное нажатие кнопки более ххх мс

@@ -34,6 +34,7 @@ I_adc_l:			.byte 1						; ADC тока (младший байт)
 I_adc_h:			.byte 1						; ADC тока (старший байт)
 adci_counter:		.byte 1						; Колличество повторений запуска последовательных преобразований АЦП
 lcd_buf5:			.byte 5						; буфер LCD для вывода чисел от 0 до 0xFFFF
+lcd_buf2:			.byte 2
 prev_msecond_l:		.byte 1						; промежуток между индикацией (младший байт)
 prev_msecond_h:		.byte 1						; промежуток между индикацией (старший байт)
 key_count:			.byte 1
@@ -44,6 +45,7 @@ flags:				.byte 1
 .equ				start_stop_CAKB =	2
 .equ				adc_complete	=	3
 .equ				key_timeout		=	4
+.equ				start_reset		=	5
 
 UU_akb_l:			.byte 1
 UU_akb_h:			.byte 1
@@ -187,6 +189,19 @@ TIM0_COMPA:
 	clr		ZL
 	clr		ZH
 
+	lds		temp1,		flags
+	sbrs	temp1,		start_stop_CAKB
+	rjmp	OUT_msec
+
+	sbrc	temp1,		start_reset
+	rjmp	clr_time
+	sts		second,		zero
+	sts		minute,		zero
+	sts		hour,		zero
+	sbr		temp1,		(1<<start_reset)
+	sts		flags,		temp1
+	rjmp	OUT_msec
+clr_time:
 	lds		temp1,			second
 	inc		temp1									; инкремент секунд
 	cpi		temp1,			60
@@ -214,7 +229,13 @@ OUT_sec:
 OUT_msec:
 	sts		msecond_l,		ZL
 	sts		msecond_h,		ZH
-	
+	lds		temp1,		flags
+	sbrc	temp1,		start_stop_CAKB
+	rjmp	TIM0_COMPA_out
+	cbr		temp1,		(1<<start_reset)
+	sts		flags,		temp1
+
+TIM0_COMPA_out:
 	pop		ZH
 	pop		ZL
 	pop		temp3
@@ -431,12 +452,45 @@ LCD_write:
 ; "lcd_buf5" на LCD. Число выводимых символов
 ;расположено в переменной "length_buf"
 ;***************************************************
+Indications_point:
+	ldi		temp5,			length_buf - 2
+	rjmp	Indications1
 Indications:
+	ldi		temp5,			length_buf + 1
+Indications1:
 	ldi		ZL,				low(lcd_buf5)
 	ldi		ZH,				high(lcd_buf5)
 	ldi		temp1,			length_buf
 	mov		n_pos_lcd,		temp1
 Indications_loop:
+	cpse	n_pos_lcd,		temp5
+	rjmp	Indications_loop1
+	ldi		temp2,			','
+	rjmp	Indications_loop2
+Indications_loop1:
+	ld		temp2, 			Z+
+	ldi		temp1,			'0'
+	add		temp2,			temp1
+Indications_loop2:
+	rcall	LCD_send_byte
+	ldi		temp_delay,		30						; задержка не менее 37 мкс
+	rcall	delay_us
+	ldi		temp1,			1
+	sub		n_pos_lcd,		temp1
+	brne	Indications_loop
+	ret
+
+;***************************************************
+;Подпрограмма индикации часо, минут, секунд, размещенных в буфере
+; "lcd_buf2" на LCD. Число выводимых символов
+;расположено в переменной "length_buf"
+;***************************************************
+indications_time:
+	ldi		ZL,				low(lcd_buf2)
+	ldi		ZH,				high(lcd_buf2)
+	ldi		temp1,			2
+	mov		n_pos_lcd,		temp1
+Indications_time_loop:
 	ld		temp2, 			Z+
 	ldi		temp1,			'0'
 	add		temp2,			temp1
@@ -445,8 +499,16 @@ Indications_loop:
 	rcall	delay_us
 	ldi		temp1,			1
 	sub		n_pos_lcd,		temp1
-	brne	Indications_loop
+	brne	Indications_time_loop
 	ret
+
+indications_razd:
+	ldi		temp2,			':'
+	rcall	LCD_send_byte
+	ldi		temp_delay,		30						; задержка не менее 37 мкс
+	rcall	delay_us
+	ret
+
 ;*********************************************************************
 ;********* Подпрограмма сканирования кнопки
 ;*********************************************************************
@@ -479,8 +541,8 @@ scan_key_out2:										; определили что кнопка нажата
 	cli
 	lds		temp3,			systimer_h
 	lds		temp2,			systimer_l				; загрузка текущего времени
-	in		temp4,			TIMSK
-	sbrs	temp4,			OCIE0A
+	in		temp4,			TIFR
+	sbrs	temp4,			OCF0A
 	rjmp	NO_OCIE0A1
 	subi	temp2,			0xFF
 	sbci	temp3,			0xFF
@@ -498,8 +560,8 @@ scan_key_push_time:
 	cli
 	lds		temp3,			systimer_h
 	lds		temp2,			systimer_l				; загрузка текущего времени
-	in		temp4,			TIMSK
-	sbrs	temp4,			OCIE0A
+	in		temp4,			TIFR
+	sbrs	temp4,			OCF0A
 	rjmp	NO_OCIE0A2
 	subi	temp2,			0xFF
 	sbci	temp3,			0xFF
@@ -545,11 +607,11 @@ Estim_vol_akb:
 	lds		temp1,			U_adc_l
 	lds		temp2,			U_adc_h
 
-	rcall	div_u16_4
+	rcall	div_u16_64
 	mov		XL,				temp1
 	mov		XH,				temp2
-	ldi		temp1,			low(3700)			;3700
-	ldi		temp2,			high(3700)
+	ldi		temp1,			low(3772)			;3700
+	ldi		temp2,			high(3772)
 	rcall	mul_16x16
 ;	rcall	div_u32_256							; делить на 256 все равно что откинуть младший байт
 		
@@ -559,11 +621,11 @@ Estim_vol_akb:
 	lds		temp1,			I_adc_l
 	lds		temp2,			I_adc_h
 
-	rcall	div_u16_4
+	rcall	div_u16_64
 	mov		XL,				temp1
 	mov		XH,				temp2
-	ldi		temp1,			low(2327*4)
-	ldi		temp2,			high(2327*4)
+	ldi		temp1,			low(5052*4)
+	ldi		temp2,			high(5052*4)
 	rcall	mul_16x16
 	rcall	div_u32_4
 
@@ -715,6 +777,29 @@ bin16ASCII5_digit_loop:
 	add		tmpASCII_l,		temp1
 	adc		tmpASCII_h,		temp2
 	ret
+
+;*********************************************************************
+;********* "bin8ASCII2"- преобразование 8-битного (до 99) двоичного
+;********* значения в неупакованный BCD формат, тоесть в ASII формат.
+;*********************************************************************
+;	1. ввести число в tmpASCII_L
+;	2. результат копируется в буфер
+bin8ASCII2:
+	ldi		temp1,			10
+	rcall	bin8ASCII2_digit
+	sts		lcd_buf2,		temp3					; 1_0
+	sts		lcd_buf2+1,		tmpASCII_L				; 0_1
+	ret
+
+bin8ASCII2_digit:
+	ldi		temp3,	-1
+bin8ASCII2_digit_loop:
+	inc		temp3
+	sub		tmpASCII_L,		temp1
+	brsh	bin8ASCII2_digit_loop
+	add		tmpASCII_l,		temp1
+	ret
+
 ;*********************************************************************
 ;********* Подпрограммы задержки *******
 ;*********************************************************************
@@ -805,6 +890,14 @@ SRAM_clr1:
 	sts		cursor_pos,	temp1
 	rcall	LCD_set_cursor
 
+	ldi		ZL,				low(Message3*2)			; вывод текста
+	ldi		ZH,				high(Message3*2)
+	rcall	Message_send
+
+	ldi		temp1,	0x19							; установка курсора 
+	sts		cursor_pos,	temp1
+	rcall	LCD_set_cursor
+
 	ldi		ZL,				low(Message2*2)			; вывод текста
 	ldi		ZH,				high(Message2*2)
 	rcall	Message_send
@@ -816,7 +909,8 @@ main_loop:
 	lds		temp1,			vtimer1_l				; загрузка текущих миллисекунд
 	lds		temp2,			vtimer1_h
 	cpi		temp1,			vtimer1					; проверка времени виртуального таймера
-	brlo	main_ind_loop_out						; переход если текущее время еще не дошло до нового времени обновления
+	brsh	pc+2						; переход если текущее время еще не дошло до нового времени обновления
+	rjmp	main_ind_loop_out
 
 	sts		vtimer1_l,		zero	
 	sts		vtimer1_h,		zero
@@ -834,7 +928,7 @@ main_loop:
 	brne	main_ind_loop_out
 	sts		lcd_loop,		zero
 
-	ldi		temp1,			0x04					; установка курсора 
+	ldi		temp1,			0x02					; установка курсора 
 	sts		cursor_pos,		temp1
 	rcall	LCD_set_cursor
 
@@ -843,14 +937,35 @@ main_loop:
 	mov		tmpASCII_l, 	temp1
 	mov		tmpASCII_h, 	temp2
 	rcall	bin16ASCII5
-	rcall	indications
+	rcall	indications_point
 
-	ldi		temp1,			0x14					; установка курсора 
+	ldi		temp1,			0x08					; установка курсора 
 	sts		cursor_pos,		temp1
 	rcall	LCD_set_cursor
 
-;	lds		temp1,			II_akb_l
-;	lds		temp2, 			II_akb_h
+	lds		temp1,			hour
+	mov		tmpASCII_l, 	temp1
+	rcall	bin8ASCII2
+	rcall	indications_time
+
+	rcall	indications_razd
+
+	lds		temp1,			minute
+	mov		tmpASCII_l, 	temp1
+	rcall	bin8ASCII2
+	rcall	indications_time
+
+	rcall	indications_razd
+
+	lds		temp1,			second
+	mov		tmpASCII_l, 	temp1
+	rcall	bin8ASCII2
+	rcall	indications_time
+
+	ldi		temp1,			0x12					; установка курсора 
+	sts		cursor_pos,		temp1
+	rcall	LCD_set_cursor
+
 	lds		temp1,			CC_akb_l
 	lds		temp2,			CC_akb_h
 
@@ -869,7 +984,7 @@ main_loop:
 	mov		tmpASCII_l, 	temp1
 	mov		tmpASCII_h, 	temp2
 	rcall	bin16ASCII5
-	rcall	indications
+	rcall	indications_point
 
 main_ind_loop_out:
 ;	rcall	estim_vol_akb
@@ -887,7 +1002,7 @@ on_led:
 
 	rjmp	main_loop
 
-Message1:	.db "U = ",'\0',0
-Message2:	.db	"I = ",'\0',0
-Message3:	.db "C = ",'\0',0
+Message1:	.db "U=",'\0', 0x00
+Message2:	.db	"I=",'\0', 0x00
+Message3:	.db "C=",'\0', 0x00
 Message4:	.db 0xA2,0xBC,0xBA,0x6F,0x63,0xBF,0xC4, '=', '\0', 0x00
