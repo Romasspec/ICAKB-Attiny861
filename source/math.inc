@@ -8,7 +8,7 @@ mul_16x8:
 	ldi		temp4,			8
 	clc
 mul_16x8_1:
-	sbrs	temp1,				0
+	sbrs	temp1,			0
 	rjmp	mul_16x8_2
 	add		temp2,			XL
 	adc		temp3,			XH
@@ -31,7 +31,7 @@ mul_16x16:
 	ldi		temp7,			16
 	clc
 mul_16x16_1:
-	sbrs	temp1,				0
+	sbrs	temp1,			0
 	rjmp	mul_16x16_2
 	add		temp3,			XL
 	adc		temp4,			XH
@@ -84,7 +84,7 @@ div_u32_256_1:
 	ret
 
 ;***************************************************
-;Подпрограмма деления чисел u16/u16
+;Подпрограмма деления чисел u32/u8
 ;temp4:temp3:temp2:temp1 = temp7:temp6:temp5:temp4/temp1
 .def	drem16u0	=	r12
 .def	drem16u1	=	r13
@@ -106,7 +106,7 @@ div32u:
 	clr		drem16u1
 	clr		drem16u2
 	sub		drem16u3,	drem16u3	;очистить остаток HB и флаг переноса
-	ldi		temp8,33				;инициализация счетчика циклов
+	ldi		temp8,33				;инициализация счетчика циклов	т.к. 4 байта по 8 бит
 d32u_1:
 	rol		temp4					;сдвиг влево делимого
 	rol		temp5
@@ -122,12 +122,12 @@ d32u_2:
 	rol		drem16u3
 
 	sub		drem16u0,	temp1		;остаток = остаток - делитель
-	sbc		drem16u1,	zero	;dv16uH		;
+	sbc		drem16u1,	zero
 	sbc		drem16u2,	zero
 	sbc		drem16u3,	zero
 	brcc	d32u_3					;если вычитание меньше 0
 	add		drem16u0,	temp1		;восстанавливаем остаток
-	adc		drem16u1,	zero	;dv16uH
+	adc		drem16u1,	zero
 	adc		drem16u2,	zero	
 	adc		drem16u3,	zero
 	clc								;clear carry to be shifted into result
