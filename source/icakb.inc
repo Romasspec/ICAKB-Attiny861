@@ -48,3 +48,5 @@
 .equ vtimer1				= 10			; цикл 10 мс
 .equ adc_counter			= 64
 .equ key_timeout_val		= 1500			; длительное нажатие кнопки более ххх мс
+.equ Uakbmax				= 12450			; м¬
+.equ Cakbmax				= 3300			; мј/ч

@@ -46,6 +46,8 @@ flags:				.byte 1
 .equ				adc_complete	=	3
 .equ				key_timeout		=	4
 .equ				start_reset		=	5
+.equ				Ulimit			=	6
+.equ				Climit			=	7
 
 UU_akb_l:			.byte 1
 UU_akb_h:			.byte 1
@@ -722,6 +724,34 @@ calc_time_out:
 	ret
 
 ;*********************************************************************
+;********* Подпрограмма проверки максимального напряжения и емкости
+;*********************************************************************
+test_parametrs:
+	lds		temp1,			UU_akb_l
+	lds		temp2, 			UU_akb_h
+	cpi		temp1,			low (Uakbmax)
+	ldi		temp3,			high(Uakbmax)
+	cpc		temp2,			temp3
+	brlo	test_parametrs1
+	lds		temp1,			flags
+	sbr		temp1,			(1<<Ulimit)
+	sts		flags,			temp1
+	
+test_parametrs1:
+	lds		temp1,			CC_akb_l
+	lds		temp2,			CC_akb_h
+	cpi		temp1,			low (Cakbmax)
+	ldi		temp3,			high(Cakbmax)
+	cpc		temp2,			temp3
+	brlo	test_parametrs2
+	lds		temp1,			flags
+	sbr		temp1,			(1<<Climit)
+	sts		flags,			temp1
+
+test_parametrs2:
+	ret
+
+;*********************************************************************
 ;********* Подпрограмма запуска преобразования АЦП
 ;*********************************************************************
 start_adc:
@@ -967,7 +997,7 @@ main_loop2:
 	inc		temp1
 	sts		lcd_loop,		temp1
 	cpi		temp1,			(Ind_loop/vtimer1)
-	brne	main_ind_loop_out
+	brne	main_ind_loop_out1
 	sts		lcd_loop,		zero
 
 	ldi		temp1,			0x02					; установка курсора 
@@ -1027,6 +1057,14 @@ main_loop2:
 	mov		tmpASCII_h, 	temp2
 	rcall	bin16ASCII5
 	rcall	indications_point
+	rjmp	main_ind_loop_out
+
+main_ind_loop_out1:
+	lds		temp1,		flags
+	sbrs	temp1,		start_stop_CAKB
+	rjmp	main_ind_loop_out
+
+	rcall	test_parametrs
 
 main_ind_loop_out:
 
